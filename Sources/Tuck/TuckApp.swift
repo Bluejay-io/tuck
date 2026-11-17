@@ -55,7 +55,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Menu
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        store.rescan()
         menu.removeAllItems()
 
         if !store.trusted || !store.onboarded {
