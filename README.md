@@ -14,7 +14,7 @@ Tuck installs into `/Applications` (macOS 27 requires it) and opens a short setu
 2. Pick **Inline** or **Tucked** for each menu bar app.
 3. Hold ⌘ and drag Tuck's icon to where your inline icons should end.
 
-Run the same command again to update. Updates keep the permission because every release is signed with the same certificate.
+From 0.2.0 on, Tuck checks GitHub for new releases and puts an **Update to Tuck x.y** item in its menu (and an Update button in Settings). Older versions update by running the same command again. Updates keep the permission because every release is signed with the same certificate.
 
 ## How it works
 

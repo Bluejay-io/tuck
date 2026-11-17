@@ -22,6 +22,7 @@ enum Main {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let store = TuckStore()
+    private let updater = Updater()
     private var statusItem: NSStatusItem!
     private let menu = NSMenu()
     private var onboardingWindow: NSWindow?
@@ -41,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
 
         store.rescan()
+        updater.start()
         if store.onboarded {
             Task { await store.apply() }
         } else {
@@ -82,6 +84,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+        if let version = updater.available {
+            let update = item(updater.installing ? "Updating to Tuck \(version)…" : "Update to Tuck \(version)", #selector(installUpdate))
+            update.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: nil)
+            update.isEnabled = !updater.installing
+            menu.addItem(update)
+        }
         let settings = item("Settings…", #selector(openSettings))
         settings.keyEquivalent = ","
         menu.addItem(settings)
@@ -107,6 +115,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let id = sender.representedObject as? String, let app = store.apps.first(where: { $0.bundleID == id }) else { return }
         Task { await store.open(app) }
     }
+
+    @objc private func installUpdate() { updater.install() }
 
     @objc private func untuck(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
@@ -140,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openSettings() {
         if settingsWindow == nil {
-            settingsWindow = makeWindow(title: "Tuck Settings", root: SettingsView(store: store))
+            settingsWindow = makeWindow(title: "Tuck Settings", root: SettingsView(store: store, updater: updater))
         }
         present(settingsWindow)
     }

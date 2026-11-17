@@ -2,6 +2,11 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var store: TuckStore
+    @ObservedObject var updater: Updater
+
+    private var versionText: String {
+        "Tuck \(updater.current)" + (updater.available == nil && updater.checkedAt != nil ? " · up to date" : "")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -19,6 +24,17 @@ struct SettingsView: View {
             }
             Divider()
             Toggle("Launch at login", isOn: Binding(get: { store.launchAtLogin }, set: { store.launchAtLogin = $0 }))
+            HStack {
+                Text(versionText).font(.system(size: 12)).foregroundStyle(.secondary)
+                Spacer()
+                if let version = updater.available {
+                    Button(updater.installing ? "Updating…" : "Update to \(version)") { updater.install() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(updater.installing)
+                } else {
+                    Button("Check for Updates") { Task { await updater.check() } }
+                }
+            }
             Text("Tip: hold ⌘ and drag Tuck's icon to choose where your inline icons end.")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
