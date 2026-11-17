@@ -11,7 +11,8 @@ final class TuckStore: ObservableObject {
     private let concealer = Concealer()
     private var lifted: String?
     private var liftMonitor: Any?
-    private var observers: [NSObjectProtocol] = []
+    private var runningObserver: NSKeyValueObservation?
+    private var allowedRunning: Set<String> = []
 
     init() {
         tucked = Set(UserDefaults.standard.stringArray(forKey: "tucked") ?? [])
@@ -21,15 +22,13 @@ final class TuckStore: ObservableObject {
         Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.rescan() }
         }
-        let center = NSWorkspace.shared.notificationCenter
-        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in
-                    await self?.apply()
-                    try? await Task.sleep(for: .seconds(2))
-                    self?.rescan()
-                }
-            })
+        runningObserver = NSWorkspace.shared.observe(\.runningApplications) { [weak self] _, _ in
+            Task { @MainActor in
+                guard let self, Self.runningBundleIDs() != self.allowedRunning else { return }
+                await self.apply()
+                try? await Task.sleep(for: .seconds(2))
+                self.rescan()
+            }
         }
     }
 
@@ -60,7 +59,9 @@ final class TuckStore: ObservableObject {
             concealer.showAll()
             return
         }
-        var allowed = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)).subtracting(tucked)
+        let running = Self.runningBundleIDs()
+        allowedRunning = running
+        var allowed = running.subtracting(tucked)
         allowed.insert(Bundle.main.bundleIdentifier ?? "io.bluejay.tuck")
         if let lifted { allowed.insert(lifted) }
         do {
@@ -70,6 +71,10 @@ final class TuckStore: ObservableObject {
             lastError = error.localizedDescription
             NSLog("Tuck: hiding failed: \(error.localizedDescription)")
         }
+    }
+
+    private static func runningBundleIDs() -> Set<String> {
+        Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
     }
 
     func showEverything() {
