@@ -24,6 +24,8 @@ jobs:
           security unlock-keychain -p "$PASSWORD" "$KC"
           security import "$RUNNER_TEMP/signing.p12" -k "$KC" -P "$PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$PASSWORD" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          security find-identity -p codesigning "$KC"
           echo "SIGN_KEYCHAIN=$KC" >> "$GITHUB_ENV"
       - name: Build Tuck.app
         env:
