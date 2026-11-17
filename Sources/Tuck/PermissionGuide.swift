@@ -31,6 +31,16 @@ final class PermissionGuide {
         }
     }
 
+    /// Clears a stale Accessibility entry (one left by an older build) and starts over.
+    func fix() {
+        let reset = Process()
+        reset.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        reset.arguments = ["reset", "Accessibility", Bundle.main.bundleIdentifier ?? "io.bluejay.tuck"]
+        try? reset.run()
+        reset.waitUntilExit()
+        show()
+    }
+
     func close() {
         timer?.invalidate()
         timer = nil

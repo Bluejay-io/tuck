@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import signing identity
+        env:
+          P12: ${{ secrets.SIGNING_P12_BASE64 }}
+          PASSWORD: ${{ secrets.SIGNING_P12_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/signing.keychain-db"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security create-keychain -p "$PASSWORD" "$KC"
+          security set-keychain-settings "$KC"
+          security unlock-keychain -p "$PASSWORD" "$KC"
+          security import "$RUNNER_TEMP/signing.p12" -k "$KC" -P "$PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$PASSWORD" "$KC" >/dev/null
+          echo "SIGN_KEYCHAIN=$KC" >> "$GITHUB_ENV"
+      - name: Build Tuck.app
+        env:
+          SIGN_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
+        run: VERSION="${GITHUB_REF_NAME#v}" ./scripts/bundle.sh
+      - name: Check the signature is the stable one
+        env:
+          SIGN_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
+        run: codesign -d -r- dist/Tuck.app 2>&1 | grep -qi "$SIGN_IDENTITY"
+      - name: Zip
+        run: ditto -c -k --keepParent dist/Tuck.app dist/Tuck.zip
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/Tuck.zip --title "Tuck $GITHUB_REF_NAME" --generate-notes

@@ -5,29 +5,33 @@ struct MenuBarApp: Identifiable, Hashable {
     let bundleID: String
     let name: String
     let pid: pid_t
-    let itemCount: Int
+    let bundleURL: URL?
     var id: String { bundleID }
-    var icon: NSImage? { NSRunningApplication(processIdentifier: pid)?.icon }
+
+    var icon: NSImage {
+        if let bundleURL { return NSWorkspace.shared.icon(forFile: bundleURL.path) }
+        return NSRunningApplication(processIdentifier: pid)?.icon ?? NSImage(systemSymbolName: "app", accessibilityDescription: nil)!
+    }
+
+    /// macOS 27 only keeps apps visible while hiding when they run from /Applications or /System.
+    var canStayVisible: Bool {
+        guard let path = bundleURL?.path else { return true }
+        return path.hasPrefix("/Applications/") || path.hasPrefix("/System/")
+    }
 }
 
 enum MenuBarScanner {
     static let menuBarAgent = "com.apple.MenuBarAgent"
 
-    static func scan() -> (apps: [MenuBarApp], systemItems: [String]) {
-        var apps: [MenuBarApp] = []
-        var system: [String] = []
+    /// Running apps that own at least one menu bar item, Tuck and the system's own excluded.
+    static func scan() -> [MenuBarApp] {
         let own = ProcessInfo.processInfo.processIdentifier
-        for app in NSWorkspace.shared.runningApplications {
-            guard let bundleID = app.bundleIdentifier, app.processIdentifier != own else { continue }
-            let items = extras(of: app.processIdentifier)
-            guard !items.isEmpty else { continue }
-            if bundleID == menuBarAgent {
-                system = items.map { string($0, kAXIdentifierAttribute) ?? string($0, kAXDescriptionAttribute) ?? "?" }
-                continue
-            }
-            apps.append(MenuBarApp(bundleID: bundleID, name: app.localizedName ?? bundleID, pid: app.processIdentifier, itemCount: items.count))
+        return NSWorkspace.shared.runningApplications.compactMap { app -> MenuBarApp? in
+            guard let bundleID = app.bundleIdentifier, app.processIdentifier != own, bundleID != menuBarAgent,
+                  !extras(of: app.processIdentifier).isEmpty else { return nil }
+            return MenuBarApp(bundleID: bundleID, name: app.localizedName ?? bundleID, pid: app.processIdentifier, bundleURL: app.bundleURL)
         }
-        return (apps.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }, system)
+        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     static func extras(of pid: pid_t) -> [AXUIElement] {
@@ -49,17 +53,5 @@ enum MenuBarScanner {
         AXValueGetValue(position as! AXValue, .cgPoint, &point)
         AXValueGetValue(size as! AXValue, .cgSize, &extent)
         return CGRect(origin: point, size: extent)
-    }
-
-    static func actions(_ element: AXUIElement) -> [String] {
-        var names: CFArray?
-        guard AXUIElementCopyActionNames(element, &names) == .success else { return [] }
-        return (names as? [String]) ?? []
-    }
-
-    static func string(_ element: AXUIElement, _ attribute: String) -> String? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
-        return value as? String
     }
 }
