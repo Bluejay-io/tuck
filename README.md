@@ -19,7 +19,7 @@ From 0.2.0 on, Tuck checks GitHub for new releases and puts an **Update to Tuck 
 ## How it works
 
 - **Hiding** uses macOS 27's menu bar assessment mode (`MBAssessmentModeAssertion` in the private `MenuBarClientCore` framework): while Tuck holds it, only the apps you keep inline stay on the bar. Clock, Wi-Fi, battery and Control Centre always stay. Quitting Tuck shows everything again.
-- **Opening** a tucked app presses its hidden menu bar item through Accessibility, so its own menu or panel opens without the icon coming back. If that fails, Tuck shows the icon for a moment and presses it there.
+- **Opening** a tucked app shows its icon for a moment and presses it through Accessibility, so its own menu or panel opens under the icon. The icon tucks away again on your next click or key press. An app Tuck can't show is pressed while hidden instead.
 - Hiding works per app: an app with two icons keeps both together. Apps outside `/Applications` can't be kept visible while hiding, and Tuck warns about them.
 
 The hiding interface is private, so a macOS update can change it.
