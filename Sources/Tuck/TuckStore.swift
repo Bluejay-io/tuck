@@ -11,6 +11,7 @@ final class TuckStore: ObservableObject {
     private let concealer = Concealer()
     private var lifted: String?
     private var liftMonitor: Any?
+    private var liftGeneration = 0
     private var runningObserver: NSKeyValueObservation?
     private var allowedRunning: Set<String> = []
 
@@ -81,39 +82,50 @@ final class TuckStore: ObservableObject {
         concealer.showAll()
     }
 
-    /// Opens a tucked app's own menu. Pressing it through Accessibility works while it stays
-    /// hidden; when that fails, the app is shown for a moment and pressed where it appears.
+    /// Opens a tucked app's own menu: the app is shown on the bar for a moment and pressed where
+    /// it appears, so its menu anchors under its icon instead of at a hidden item's zero frame.
+    /// An app that can't be shown is pressed while hidden instead.
     func open(_ app: MenuBarApp) async {
+        removeLiftMonitor()
+        liftGeneration += 1
+        let generation = liftGeneration
         try? await Task.sleep(for: .milliseconds(120))
-        for _ in 0..<2 {
-            if let item = MenuBarScanner.extras(of: app.pid).first,
-               AXUIElementPerformAction(item, kAXPressAction as CFString) == .success { return }
-            try? await Task.sleep(for: .milliseconds(250))
-        }
-        await lift(app)
-    }
-
-    private func lift(_ app: MenuBarApp) async {
         lifted = app.bundleID
         await apply()
+        var pressed = false
         for _ in 0..<30 {
             try? await Task.sleep(for: .milliseconds(100))
+            guard generation == liftGeneration else { return }
             if let item = MenuBarScanner.extras(of: app.pid).first, (MenuBarScanner.frame(item)?.width ?? 0) > 0,
-               AXUIElementPerformAction(item, kAXPressAction as CFString) == .success { break }
+               AXUIElementPerformAction(item, kAXPressAction as CFString) == .success {
+                pressed = true
+                break
+            }
+        }
+        guard pressed else {
+            if let item = MenuBarScanner.extras(of: app.pid).first {
+                AXUIElementPerformAction(item, kAXPressAction as CFString)
+            }
+            return dropLift()
         }
         let started = Date()
         liftMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp, .keyDown]) { [weak self] _ in
             guard Date().timeIntervalSince(started) > 0.5 else { return }
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(400))
-                self?.dropLift()
+                guard let self, generation == self.liftGeneration else { return }
+                self.dropLift()
             }
         }
     }
 
-    private func dropLift() {
+    private func removeLiftMonitor() {
         if let liftMonitor { NSEvent.removeMonitor(liftMonitor) }
         liftMonitor = nil
+    }
+
+    private func dropLift() {
+        removeLiftMonitor()
         lifted = nil
         Task { await apply() }
     }
