@@ -28,6 +28,7 @@ enum MenuBarScanner {
         let own = ProcessInfo.processInfo.processIdentifier
         return NSWorkspace.shared.runningApplications.compactMap { app -> MenuBarApp? in
             guard let bundleID = app.bundleIdentifier, app.processIdentifier != own, bundleID != menuBarAgent,
+                  bundleID != Bundle.main.bundleIdentifier,
                   !extras(of: app.processIdentifier).isEmpty else { return nil }
             return MenuBarApp(bundleID: bundleID, name: app.localizedName ?? bundleID, pid: app.processIdentifier, bundleURL: app.bundleURL)
         }

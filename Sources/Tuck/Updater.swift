@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 @MainActor
 final class Updater: ObservableObject {
@@ -8,7 +8,10 @@ final class Updater: ObservableObject {
 
     let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
     private var timer: Timer?
-    private static let installCommand = "curl -fsSL https://raw.githubusercontent.com/bluejay-io/tuck/main/install.sh | bash"
+    private static let installCommand = """
+        script="$(mktemp)" && trap 'rm -f "$script"' EXIT && \
+        curl -fsSL https://raw.githubusercontent.com/bluejay-io/tuck/main/install.sh -o "$script" && bash "$script"
+        """
 
     func start() {
         Task { await check() }
@@ -38,14 +41,35 @@ final class Updater: ObservableObject {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = ["-c", Self.installCommand]
+        process.environment = ProcessInfo.processInfo.environment.merging(["TUCK_IN_APP_UPDATE": "1"]) { $1 }
         process.standardInput = FileHandle.nullDevice
         let handle = try? FileHandle(forWritingTo: log)
         process.standardOutput = handle ?? FileHandle.nullDevice
         process.standardError = handle ?? FileHandle.nullDevice
-        process.terminationHandler = { [weak self] _ in
-            Task { @MainActor in self?.installing = false }
+        process.terminationHandler = { [weak self] process in
+            let succeeded = process.terminationStatus == 0
+            Task { @MainActor in
+                if succeeded { self?.relaunch() } else { self?.installing = false }
+            }
         }
         do { try process.run() } catch { installing = false }
+    }
+
+    /// Opens the freshly installed copy as a new instance, then quits this one, so the update
+    /// takes effect without the install script having to kill the app that started it.
+    private func relaunch() {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/Applications/Tuck.app"), configuration: configuration) { _, error in
+            Task { @MainActor in
+                if let error {
+                    NSLog("Tuck: relaunch after update failed: \(error.localizedDescription)")
+                    self.installing = false
+                    return
+                }
+                NSApp.terminate(nil)
+            }
+        }
     }
 
     static func isNewer(_ a: String, than b: String) -> Bool {
