@@ -8,7 +8,10 @@ final class Updater: ObservableObject {
 
     let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
     private var timer: Timer?
-    private static let installCommand = "curl -fsSL https://raw.githubusercontent.com/bluejay-io/tuck/main/install.sh | bash"
+    private static let installCommand = """
+        script="$(mktemp)" && trap 'rm -f "$script"' EXIT && \
+        curl -fsSL https://raw.githubusercontent.com/bluejay-io/tuck/main/install.sh -o "$script" && bash "$script"
+        """
 
     func start() {
         Task { await check() }
